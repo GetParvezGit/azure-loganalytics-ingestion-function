@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36811.4 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureLoggerFunction", "AzureLoggerFunction\AzureLoggerFunction.csproj", "{76921FAA-2C61-4934-8D1E-0BFDAF67ED38}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureLogHelper", "Azure.LogHelper\AzureLogHelper.csproj", "{88B7AEFF-7B87-4C79-AAB4-46CCF2B2FEF4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{76921FAA-2C61-4934-8D1E-0BFDAF67ED38}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{76921FAA-2C61-4934-8D1E-0BFDAF67ED38}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{76921FAA-2C61-4934-8D1E-0BFDAF67ED38}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{76921FAA-2C61-4934-8D1E-0BFDAF67ED38}.Release|Any CPU.Build.0 = Release|Any CPU
+		{88B7AEFF-7B87-4C79-AAB4-46CCF2B2FEF4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{88B7AEFF-7B87-4C79-AAB4-46CCF2B2FEF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{88B7AEFF-7B87-4C79-AAB4-46CCF2B2FEF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{88B7AEFF-7B87-4C79-AAB4-46CCF2B2FEF4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {76B1BA7D-2603-4649-9BEF-F320068AC908}
+	EndGlobalSection
+EndGlobal
