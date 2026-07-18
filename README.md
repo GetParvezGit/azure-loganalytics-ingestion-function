@@ -37,7 +37,7 @@ Place the following keys in `AzureLoggerFunction/local.settings.json` (or set as
 
 Example snippet from this repository's `local.settings.json`:
 
-
+```
 {
   "IsEncrypted": false,
   "Values": {
@@ -49,10 +49,10 @@ Example snippet from this repository's `local.settings.json`:
     "AZURE_CLIENT_SECRET_IntegrationLogger": "<client-secret>",
     "AZURE_MONITOR_DCE_IntegrationLogger": "https://dce-<name>.ingest.monitor.azure.com",
     "AZURE_MONITOR_DCR_IntegrationLogger": "<dcr-resource-id>",
-    "AZURE_MONITOR_DCR_StreamName_IntegrationLogger": "Custom-IntegrationLogger_CL"
+    "AZURE_MONITOR_DCR_StreamName_IntegrationLogger": "Custom-<TableName>_CL"
   }
 }
-
+```
 
 **Note:** In production, store secrets in Azure Key Vault or set them as Function App settings (do not check secrets into source control).
 
@@ -64,7 +64,7 @@ Example snippet from this repository's `local.settings.json`:
   - `LogAnalytics_InstanceName` — suffix used to pick the configuration keys from settings (for example, `IntegrationLogger` will cause the function to read `AZURE_TENANT_ID_IntegrationLogger`, etc.)
 - **Request Body:** A JSON array of objects representing log records. Example body:
 
-
+```
 [
   {
     "TimeGenerated": "2026-02-01T14:05:00Z",
@@ -74,17 +74,17 @@ Example snippet from this repository's `local.settings.json`:
     "LogDetails": "This is a test log."
   }
 ]
-
+```
 
 ### Example curl Command
 
-
+```
 curl -X POST "http://localhost:7071/api/LogIngestionLogger" \
   -H "Content-Type: application/json" \
   -H "AZURE_MONITOR_DCR_STREAM: Custom-IntegrationLogger_CL" \
   -H "LogAnalytics_InstanceName: IntegrationLogger" \
   -d '[{"TimeGenerated":"2026-02-01T14:05:00Z","InterfaceName":"LoggerFunction","LogType":"SUCCESS","LogMessage":"Logging Message","LogDetails":"This is a test log."}]'
-
+```
 
 ## Run Locally
 
@@ -119,9 +119,6 @@ curl -X POST "http://localhost:7071/api/LogIngestionLogger" \
 
 ## License
 
-MIT
-
-
-
+This project is provided under the MIT License. See `LICENSE` file for details. 
 
 This revised README maintains the original structure while enhancing clarity and organization, ensuring that users can easily understand and utilize the Azure Logger Function project.
