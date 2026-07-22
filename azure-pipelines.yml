@@ -9,8 +9,7 @@ variables:
 
   azureServiceConnection: 'Azure-ServiceCon-FederationCred'
 
-  location: 'Central India'
-
+  location: 'centralindia'
   resourceGroupName: 'ail-iaz-rg-dev-serviceutilities'
   storageAccountName: 'ailiazstdevmystorage'
   functionAppName: 'ail-iaz-func-dev-logingestion'
