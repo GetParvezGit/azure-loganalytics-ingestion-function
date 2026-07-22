@@ -6,10 +6,25 @@ pool:
 
 variables:
   buildConfiguration: 'Release'
+  azureServiceConnection: 'Azure-ServiceCon-FederationCred'
+  resourceGroupName: 'ail-iaz-rg-sit-serviceutilities'
+  location: 'Central India'
 
 steps:
 
+- task: AzureCLI@2
+  displayName: 'Create Resource Group'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az group create `
+        --name "$(resourceGroupName)" `
+        --location "$(location)"
+
 - task: UseDotNet@2
+  displayName: 'Install .NET SDK'
   inputs:
     packageType: 'sdk'
     version: '8.x'
@@ -25,7 +40,7 @@ steps:
   inputs:
     command: 'build'
     projects: 'src/AzureLoggerFunction.sln'
-    arguments: '--configuration Release'
+    arguments: '--configuration $(buildConfiguration)'
 
 - task: DotNetCoreCLI@2
   displayName: Publish
@@ -33,10 +48,11 @@ steps:
     command: 'publish'
     publishWebProjects: false
     projects: 'src/AzureLoggerFunction/*.csproj'
-    arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)'
+    arguments: '--configu*ation $(buildConfiguration) --outp*t $(Build.ArtifactStagingDirectory*'
     zipAfterPublish: true
 
 - task: PublishBuildArtifacts@1
+  displayName: 'Publish Build Artifact'
   inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    PathtoPublish: '$(Build.*rtifactStagingDirectory)'
     ArtifactName: 'drop'
