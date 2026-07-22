@@ -6,22 +6,85 @@ pool:
 
 variables:
   buildConfiguration: 'Release'
+
   azureServiceConnection: 'Azure-ServiceCon-FederationCred'
-  resourceGroupName: 'ail-iaz-rg-sit-serviceutilities'
+
   location: 'Central India'
+
+  resourceGroupName: 'ail-iaz-rg-dev-serviceutilities'
+  storageAccountName: 'ailiazstdevmystorage'
+  functionAppName: 'ail-iaz-func-dev-logingestion'
 
 steps:
 
 - task: AzureCLI@2
-  displayName: 'Create Resource Group'
+  displayName: 'Create DEV Infrastructure if Not Exists'
   inputs:
     azureSubscription: '$(azureServiceConnection)'
     scriptType: 'ps'
     scriptLocation: 'inlineScript'
     inlineScript: |
-      az group create `
-        --name "$(resourceGroupName)" `
-        --location "$(location)"
+
+      Write-Host "Checking Resource Group: $(resourceGroupName)"
+
+      $resourceGroupExists = az group exists --name "$(resourceGroupName)"
+
+      if ($resourceGroupExists -eq "true") {
+        Write-Host "Resource Group already exists: $(resourceGroupName)"
+      }
+      else {
+        Write-Host "Resource Group does not exist. Creating: $(resourceGroupName)"
+
+        az group create `
+          --name "$(resourceGroupName)" `
+          --location "$(location)"
+      }
+
+
+      Write-Host "Checking Storage Account: $(storageAccountName)"
+
+      az storage account show `
+        --name "$(storageAccountName)" `
+        --resource-group "$(resourceGroupName)" `
+        2>$null
+
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host "Storage Account already exists: $(storageAccountName)"
+      }
+      else {
+        Write-Host "Storage Account does not exist. Creating: $(storageAccountName)"
+
+        az storage account create `
+          --name "$(storageAccountName)" `
+          --resource-group "$(resourceGroupName)" `
+          --location "$(location)" `
+          --sku Standard_LRS `
+          --kind StorageV2
+      }
+
+
+      Write-Host "Checking Function App: $(functionAppName)"
+
+      az functionapp show `
+        --name "$(functionAppName)" `
+        --resource-group "$(resourceGroupName)" `
+        2>$null
+
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host "Function App already exists: $(functionAppName)"
+      }
+      else {
+        Write-Host "Function App does not exist. Creating: $(functionAppName)"
+
+        az functionapp create `
+          --name "$(functionAppName)" `
+          --resource-group "$(resourceGroupName)" `
+          --storage-account "$(storageAccountName)" `
+          --consumption-plan-location "$(location)" `
+          --functions-version 4 `
+          --runtime dotnet-isolated `
+          --runtime-version 8
+      }
 
 - task: UseDotNet@2
   displayName: 'Install .NET SDK'
@@ -30,24 +93,24 @@ steps:
     version: '8.x'
 
 - task: DotNetCoreCLI@2
-  displayName: Restore
+  displayName: 'Restore'
   inputs:
     command: 'restore'
     projects: 'src/AzureLoggerFunction.sln'
 
 - task: DotNetCoreCLI@2
-  displayName: Build
+  displayName: 'Build'
   inputs:
     command: 'build'
     projects: 'src/AzureLoggerFunction.sln'
     arguments: '--configuration $(buildConfiguration)'
 
 - task: DotNetCoreCLI@2
-  displayName: Publish
+  displayName: 'Publish'
   inputs:
     command: 'publish'
     publishWebProjects: false
-    projects: 'src/AzureLoggerFunction/*.csproj'
+    projects: 'src/AzureLoggerFunction/AzureLoggerFunction.csproj'
     arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
     zipAfterPublish: true
 
