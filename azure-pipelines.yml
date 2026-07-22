@@ -43,12 +43,12 @@ steps:
 
       Write-Host "Checking Storage Account: $(storageAccountName)"
 
-      az storage account show `
-        --name "$(storageAccountName)" `
+      $storageAccountExists = az storage account list `
         --resource-group "$(resourceGroupName)" `
-        2>$null
+        --query "[?name=='$(storageAccountName)'].name" `
+        -o tsv
 
-      if ($LASTEXITCODE -eq 0) {
+      if ($storageAccountExists) {
         Write-Host "Storage Account already exists: $(storageAccountName)"
       }
       else {
@@ -65,12 +65,12 @@ steps:
 
       Write-Host "Checking Function App: $(functionAppName)"
 
-      az functionapp show `
-        --name "$(functionAppName)" `
+      $functionAppExists = az functionapp list `
         --resource-group "$(resourceGroupName)" `
-        2>$null
+        --query "[?name=='$(functionAppName)'].name" `
+        -o tsv
 
-      if ($LASTEXITCODE -eq 0) {
+      if ($functionAppExists) {
         Write-Host "Function App already exists: $(functionAppName)"
       }
       else {
