@@ -1,0 +1,124 @@
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  azureServiceConnection: 'Azure-ServiceCon-FederationCred'
+
+  location: 'centralindia'
+
+  resourceGroupName: 'ail-iaz-rg-dev-serviceutilities'
+  storageAccountName: 'ailiazstdevmystorage'
+  functionAppName: 'ail-iaz-func-dev-logingestion'
+  appInsightsName: 'ail-iaz-appi-dev-logingestion'
+
+steps:
+
+- task: AzureCLI@2
+  displayName: 'Create DEV Infrastructure if Not Exists'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+
+      Write-Host "Checking Resource Group: $(resourceGroupName)"
+
+      $resourceGroupExists = az group exists --name "$(resourceGroupName)"
+
+      if ($resourceGroupExists -eq "true") {
+        Write-Host "Resource Group already exists: $(resourceGroupName)"
+      }
+      else {
+        Write-Host "Resource Group does not exist. Creating: $(resourceGroupName)"
+
+        az group create `
+          --name "$(resourceGroupName)" `
+          --location "$(location)"
+      }
+
+
+      Write-Host "Checking Storage Account: $(storageAccountName)"
+
+      $storageAccountExists = az storage account list `
+        --resource-group "$(resourceGroupName)" `
+        --query "[?name=='$(storageAccountName)'].name" `
+        -o tsv
+
+      if ($storageAccountExists) {
+        Write-Host "Storage Account already exists: $(storageAccountName)"
+      }
+      else {
+        Write-Host "Storage Account does not exist. Creating: $(storageAccountName)"
+
+        az storage account create `
+          --name "$(storageAccountName)" `
+          --resource-group "$(resourceGroupName)" `
+          --location "$(location)" `
+          --sku Standard_LRS `
+          --kind StorageV2
+      }
+
+
+      Write-Host "Checking Application Insights: $(appInsightsName)"
+
+      $appInsightsExists = az monitor app-insights component show `
+        --app "$(appInsightsName)" `
+        --resource-group "$(resourceGroupName)" `
+        --query "name" `
+        -o tsv 2>$null
+
+      if ($appInsightsExists) {
+        Write-Host "Application Insights already exists: $(appInsightsName)"
+      }
+      else {
+        Write-Host "Application Insights does not exist. Creating: $(appInsightsName)"
+
+        az monitor app-insights component create `
+          --app "$(appInsightsName)" `
+          --location "$(location)" `
+          --resource-group "$(resourceGroupName)" `
+          --application-type web
+      }
+
+
+      Write-Host "Checking Function App: $(functionAppName)"
+
+      $functionAppExists = az functionapp list `
+        --resource-group "$(resourceGroupName)" `
+        --query "[?name=='$(functionAppName)'].name" `
+        -o tsv
+
+      if ($functionAppExists) {
+        Write-Host "Function App already exists: $(functionAppName)"
+      }
+      else {
+        Write-Host "Function App does not exist. Creating: $(functionAppName)"
+
+        az functionapp create `
+          --name "$(functionAppName)" `
+          --resource-group "$(resourceGroupName)" `
+          --storage-account "$(storageAccountName)" `
+          --consumption-plan-location "$(location)" `
+          --functions-version 4 `
+          --runtime dotnet-isolated `
+          --runtime-version 8 `
+          --os-type Windows
+      }
+
+
+      Write-Host "Fetching Application Insights connection string"
+
+      $appInsightsConnectionString = az monitor app-insights component show `
+        --app "$(appInsightsName)" `
+        --resource-group "$(resourceGroupName)" `
+        --query "connectionString" `
+        -o tsv
+
+      Write-Host "Adding Application Insights connection string to Function App settings"
+
+      az functionapp config appsettings set `
+        --name "$(functionAppName)" `
+        --resource-group "$(resourceGroupName)" `
+        --settings APPLICATIONINSIGHTS_CONNECTION_STRING="$appInsightsConnectionString"
