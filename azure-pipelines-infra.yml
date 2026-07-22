@@ -63,11 +63,11 @@ steps:
 
       Write-Host "Checking Application Insights: $(appInsightsName)"
 
-      $appInsightsExists = az monitor app-insights component show `
-        --app "$(appInsightsName)" `
+      $appInsightsExists = az resource list `
         --resource-group "$(resourceGroupName)" `
-        --query "name" `
-        -o tsv 2>$null
+        --resource-type "Microsoft.Insights/components" `
+        --query "[?name=='$(appInsightsName)'].name" `
+        -o tsv
 
       if ($appInsightsExists) {
         Write-Host "Application Insights already exists: $(appInsightsName)"
@@ -75,11 +75,12 @@ steps:
       else {
         Write-Host "Application Insights does not exist. Creating: $(appInsightsName)"
 
-        az monitor app-insights component create `
-          --app "$(appInsightsName)" `
-          --location "$(location)" `
+        az resource create `
           --resource-group "$(resourceGroupName)" `
-          --application-type web
+          --resource-type "Microsoft.Insights/components" `
+          --name "$(appInsightsName)" `
+          --location "$(location)" `
+          --properties '{\"Application_Type\":\"web\"}'
       }
 
 
@@ -110,11 +111,25 @@ steps:
 
       Write-Host "Fetching Application Insights connection string"
 
-      $appInsightsConnectionString = az monitor app-insights component show `
-        --app "$(appInsightsName)" `
+      $appInsightsConnectionString = az resource show `
         --resource-group "$(resourceGroupName)" `
-        --query "connectionString" `
+        --resource-type "Microsoft.Insights/components" `
+        --name "$(appInsightsName)" `
+        --query "properties.ConnectionString" `
         -o tsv
+
+      if (:IsNullOrWhiteSpace($appInsightsConnectionString)) {
+        Write-Host "Connection string not found. Fetching Instrumentation Key and building connection string."
+
+        $instrumentationKey = az resource show `
+          --resource-group "$(resourceGroupName)" `
+          --resource-type "Microsoft.Insights/components" `
+          --name "$(appInsightsName)" `
+          --query "properties.InstrumentationKey" `
+          -o tsv
+
+        $appInsightsConnectionString = "InstrumentationKey=$instrumentationKey"
+      }
 
       Write-Host "Adding Application Insights connection string to Function App settings"
 
