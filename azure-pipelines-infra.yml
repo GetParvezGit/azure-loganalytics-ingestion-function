@@ -118,7 +118,7 @@ steps:
         --query "properties.ConnectionString" `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($appInsightsConnectionString)) {
+      if (IsNullOrWhiteSpace($appInsightsConnectionString)) {
         Write-Host "Connection string not found. Fetching Instrumentation Key and building connection string."
 
         $instrumentationKey = az resource show `
