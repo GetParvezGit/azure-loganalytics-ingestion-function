@@ -137,3 +137,5 @@ steps:
         --name "$(functionAppName)" `
         --resource-group "$(resourceGroupName)" `
         --settings APPLICATIONINSIGHTS_CONNECTION_STRING="$appInsightsConnectionString"
+
+      Write-Host "DEV infrastructure validation completed successfully."
