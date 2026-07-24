@@ -133,7 +133,7 @@ steps:
         --query id `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($keyVaultId)) {
+      if ([string]::IsNullOrWhiteSpace($keyVaultId)) {
         Write-Error "Key Vault Id was not found."
         exit 1
       }
@@ -147,7 +147,7 @@ steps:
         --query "[?roleDefinitionName=='Key Vault Secrets Officer'].id" `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($existingAssignment)) {
+      if ([string]::IsNullOrWhiteSpace($existingAssignment)) {
         Write-Host "Assigning Key Vault Secrets Officer role to service connection."
 
         az role assignment create `
@@ -197,7 +197,7 @@ steps:
           -o tsv `
           --only-show-errors
 
-        if (:IsNullOrWhiteSpace($secretExists)) {
+        if ([string]::IsNullOrWhiteSpace($secretExists)) {
           Write-Host "Secret does not exist. Creating: $SecretName"
 
           az keyvault secret set `
@@ -288,7 +288,7 @@ steps:
 
       $clientId = $env:LOG_INGESTION_CLIENT_ID_VALUE
 
-      if (:IsNullOrWhiteSpace($clientId)) {
+      if ([string]::IsNullOrWhiteSpace($clientId)) {
         Write-Error "LOG_INGESTION_CLIENT_ID_VALUE is empty."
         exit 1
       }
@@ -299,7 +299,7 @@ steps:
         --query id `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($dcrId)) {
+      if ([string]::IsNullOrWhiteSpace($dcrId)) {
         Write-Error "DCR Id was not found."
         exit 1
       }
@@ -310,7 +310,7 @@ steps:
         --query id `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($workspaceId)) {
+      if ([string]::IsNullOrWhiteSpace($workspaceId)) {
         Write-Error "Log Analytics Workspace Id was not found."
         exit 1
       }
@@ -324,7 +324,7 @@ steps:
         --query "[?roleDefinitionName=='Monitoring Metrics Publisher'].id" `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($existingDcrAssignment)) {
+      if ([string]::IsNullOrWhiteSpace($existingDcrAssignment)) {
         Write-Host "Assigning Monitoring Metrics Publisher role on DCR."
 
         az role assignment create `
@@ -342,7 +342,7 @@ steps:
         --query "[?roleDefinitionName=='Log Analytics Contributor'].id" `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($existingWorkspaceAssignment)) {
+      if ([string]::IsNullOrWhiteSpace($existingWorkspaceAssignment)) {
         Write-Host "Assigning Log Analytics Contributor role on Log Analytics Workspace."
 
         az role assignment create `
@@ -374,7 +374,7 @@ steps:
         --query principalId `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($principalId)) {
+      if ([string]::IsNullOrWhiteSpace($principalId)) {
         Write-Error "Function App managed identity principal id was not found."
         exit 1
       }
@@ -384,7 +384,7 @@ steps:
         --query id `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($keyVaultId)) {
+      if ([string]::IsNullOrWhiteSpace($keyVaultId)) {
         Write-Error "Key Vault Id was not found."
         exit 1
       }
@@ -395,7 +395,7 @@ steps:
         --query "[?roleDefinitionName=='Key Vault Secrets User'].id" `
         -o tsv
 
-      if (:IsNullOrWhiteSpace($existingAssignment)) {
+      if ([string]::IsNullOrWhiteSpace($existingAssignment)) {
         Write-Host "Assigning Key Vault Secrets User role to Function App."
 
         az role assignment create `
