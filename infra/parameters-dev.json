@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceGroupName": {
+      "value": "ail-iaz-rg-dev-logingestion"
+    },
+    "location": {
+      "value": "centralindia"
+    },
+    "storageAccountName": {
+      "value": "ailiazstdevlogingestion"
+    },
+    "functionAppName": {
+      "value": "ail-iaz-func-dev-logingestion"
+    },
+    "appInsightsName": {
+      "value": "ail-iaz-appi-dev-logingestion"
+    },
+    "logAnalyticsWorkspaceName": {
+      "value": "ail-iaz-log-dev-logingestion"
+    },
+    "hostingPlanName": {
+      "value": "ail-iaz-plan-dev-logingestion"
+    },
+    "keyVaultName": {
+      "value": "ail-iaz-kv-dev-logger"
+    },
+    "customTableName": {
+      "value": "IntegrationLogger_CL"
+    },
+    "dceName": {
+      "value": "ail-iaz-dce-dev-logingestion"
+    },
+    "dcrName": {
+      "value": "ail-iaz-dcr-dev-logingestion"
+    },
+    "runtime": {
+      "value": "dotnet-isolated"
+    }
+  }
+}
