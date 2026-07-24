@@ -172,21 +172,31 @@ steps:
       $ErrorActionPreference = "Stop"
 
       $keyVaultName = "$(keyVaultName)"
-      $tempDirectory = "$(Agent.TempDirectory)"
 
-      $clientIdFile = Join-Path $tempDirectory "log-ingestion-client-id.txt"
-      $clientSecretFile = Join-Path $tempDirectory "log-ingestion-client-secret.txt"
-      $tenantIdFile = Join-Path $tempDirectory "log-ingestion-tenant-id.txt"
+      $clientId = $env:LOG_INGESTION_CLIENT_ID_VALUE
+      $clientSecret = $env:LOG_INGESTION_CLIENT_SECRET_VALUE
+      $tenantId = $env:LOG_INGESTION_TENANT_ID_VALUE
 
-      $env:LOG_INGESTION_CLIENT_ID_VALUE | Out-File $clientIdFile -Encoding utf8 -NoNewline
-      $env:LOG_INGESTION_CLIENT_SECRET_VALUE | Out-File $clientSecretFile -Encoding utf8 -NoNewline
-      $env:LOG_INGESTION_TENANT_ID_VALUE | Out-File $tenantIdFile -Encoding utf8 -NoNewline
+      if ([string]::IsNullOrWhiteSpace($clientId)) {
+        Write-Error "LOG_INGESTION_CLIENT_ID_VALUE is empty."
+        exit 1
+      }
 
-      function Sync-KeyVaultSecretFromFile {
+      if ([string]::IsNullOrWhiteSpace($clientSecret)) {
+        Write-Error "LOG_INGESTION_CLIENT_SECRET_VALUE is empty."
+        exit 1
+      }
+
+      if ([string]::IsNullOrWhiteSpace($tenantId)) {
+        Write-Error "LOG_INGESTION_TENANT_ID_VALUE is empty."
+        exit 1
+      }
+
+      function Sync-KeyVaultSecretFromValue {
         param (
           [string] $VaultName,
           [string] $SecretName,
-          [string] $DesiredValueFile
+          [string] $DesiredValue
         )
 
         Write-Host "Processing secret: $SecretName"
@@ -203,27 +213,21 @@ steps:
           az keyvault secret set `
             --vault-name $VaultName `
             --name $SecretName `
-            --file $DesiredValueFile `
-            --encoding utf-8 `
+            --value $DesiredValue `
             --only-show-errors
 
           Write-Host "Secret created: $SecretName"
           return
         }
 
-        $currentValueFile = Join-Path "$(Agent.TempDirectory)" "$SecretName-current.txt"
-
-        az keyvault secret download `
+        $currentValue = az keyvault secret show `
           --vault-name $VaultName `
           --name $SecretName `
-          --file $currentValueFile `
-          --encoding utf-8 `
+          --query value `
+          -o tsv `
           --only-show-errors
 
-        $currentHash = (Get-FileHash $currentValueFile -Algorithm SHA256).Hash
-        $desiredHash = (Get-FileHash $DesiredValueFile -Algorithm SHA256).Hash
-
-        if ($currentHash -eq $desiredHash) {
+        if ($currentValue -eq $DesiredValue) {
           Write-Host "Secret value is same. No update required: $SecretName"
           return
         }
@@ -240,8 +244,7 @@ steps:
         az keyvault secret set `
           --vault-name $VaultName `
           --name $SecretName `
-          --file $DesiredValueFile `
-          --encoding utf-8 `
+          --value $DesiredValue `
           --only-show-errors
 
         Write-Host "Disabling previous version: $SecretName"
@@ -250,26 +253,24 @@ steps:
           --id $oldSecretId `
           --enabled false `
           --only-show-errors
+
+        Write-Host "Secret updated successfully: $SecretName"
       }
 
-      Sync-KeyVaultSecretFromFile `
+      Sync-KeyVaultSecretFromValue `
         -VaultName $keyVaultName `
         -SecretName "log-ingestion-client-id" `
-        -DesiredValueFile $clientIdFile
+        -DesiredValue $clientId
 
-      Sync-KeyVaultSecretFromFile `
+      Sync-KeyVaultSecretFromValue `
         -VaultName $keyVaultName `
         -SecretName "log-ingestion-client-secret" `
-        -DesiredValueFile $clientSecretFile
+        -DesiredValue $clientSecret
 
-      Sync-KeyVaultSecretFromFile `
+      Sync-KeyVaultSecretFromValue `
         -VaultName $keyVaultName `
         -SecretName "log-ingestion-tenant-id" `
-        -DesiredValueFile $tenantIdFile
-
-      Remove-Item $clientIdFile -Force -ErrorAction SilentlyContinue
-      Remove-Item $clientSecretFile -Force -ErrorAction SilentlyContinue
-      Remove-Item $tenantIdFile -Force -ErrorAction SilentlyContinue
+        -DesiredValue $tenantId
 
       Write-Host "Log ingestion secrets synchronized successfully."
   env:
