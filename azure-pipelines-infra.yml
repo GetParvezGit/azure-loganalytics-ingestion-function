@@ -1,27 +1,88 @@
 trigger: none
 
+parameters:
+- name: environment
+  displayName: Environment
+  type: string
+  default: dev
+  values:
+  - dev
+  - sit
+  - prod
+
 pool:
   vmImage: 'windows-latest'
 
 variables:
-  azureServiceConnection: 'Azure-ServiceCon-FederationCred'
+- name: azureServiceConnection
+  value: 'Azure-ServiceCon-FederationCred'
 
-  location: 'centralindia'
+- name: armTemplateFile
+  value: 'infra/azuredeploy.json'
 
-  resourceGroupName: 'ail-iaz-rg-dev-serviceutilities'
-  storageAccountName: 'ailiazstdevmystorage'
-  functionAppName: 'ail-iaz-func-dev-logingestion'
-  appInsightsName: 'ail-iaz-appi-dev-logingestion'
+- name: armParametersFile
+  value: 'infra/parameters-${{ parameters.environment }}.json'
+
+- ${{ if eq(parameters.environment, 'dev') }}:
+  - group: VG-LOGINGESTION-DEV
+
+- ${{ if eq(parameters.environment, 'sit') }}:
+  - group: VG-LOGINGESTION-SIT
+
+- ${{ if eq(parameters.environment, 'prod') }}:
+  - group: VG-LOGINGESTION-PROD
 
 steps:
 
+- task: PowerShell@2
+  displayName: 'Load Environment Configuration'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $ErrorActionPreference = "Stop"
+
+      $parametersFile = "$(Build.SourcesDirectory)/$(armParametersFile)"
+
+      Write-Host "Loading configuration from: $parametersFile"
+
+      $config = Get-Content $parametersFile | ConvertFrom-Json
+
+      $resourceGroupName = $config.parameters.resourceGroupName.value
+      $location = $config.parameters.location.value
+      $functionAppName = $config.parameters.functionAppName.value
+      $keyVaultName = $config.parameters.keyVaultName.value
+      $logAnalyticsWorkspaceName = $config.parameters.logAnalyticsWorkspaceName.value
+      $dcrName = $config.parameters.dcrName.value
+      $customTableName = $config.parameters.customTableName.value
+      $tableNameWithoutCl = $customTableName.Replace("_CL", "")
+
+      Write-Host "Environment: ${{ parameters.environment }}"
+      Write-Host "Resource Group: $resourceGroupName"
+      Write-Host "Location: $location"
+      Write-Host "Function App: $functionAppName"
+      Write-Host "Key Vault: $keyVaultName"
+      Write-Host "Log Analytics Workspace: $logAnalyticsWorkspaceName"
+      Write-Host "DCR: $dcrName"
+      Write-Host "Custom Table: $customTableName"
+      Write-Host "Table Alias: $tableNameWithoutCl"
+
+      Write-Host "##vso[task.setvariable variable=resourceGroupName]$resourceGroupName"
+      Write-Host "##vso[task.setvariable variable=location]$location"
+      Write-Host "##vso[task.setvariable variable=functionAppName]$functionAppName"
+      Write-Host "##vso[task.setvariable variable=keyVaultName]$keyVaultName"
+      Write-Host "##vso[task.setvariable variable=logAnalyticsWorkspaceName]$logAnalyticsWorkspaceName"
+      Write-Host "##vso[task.setvariable variable=dcrName]$dcrName"
+      Write-Host "##vso[task.setvariable variable=customTableName]$customTableName"
+      Write-Host "##vso[task.setvariable variable=tableNameWithoutCl]$tableNameWithoutCl"
+
 - task: AzureCLI@2
-  displayName: 'Create DEV Infrastructure if Not Exists'
+  displayName: 'Create Resource Group if Not Exists'
   inputs:
     azureSubscription: '$(azureServiceConnection)'
     scriptType: 'ps'
     scriptLocation: 'inlineScript'
     inlineScript: |
+      $ErrorActionPreference = "Stop"
 
       Write-Host "Checking Resource Group: $(resourceGroupName)"
 
@@ -38,104 +99,328 @@ steps:
           --location "$(location)"
       }
 
+- task: AzureCLI@2
+  displayName: 'Deploy ARM Template'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      $ErrorActionPreference = "Stop"
 
-      Write-Host "Checking Storage Account: $(storageAccountName)"
+      Write-Host "Starting ARM deployment for environment: ${{ parameters.environment }}"
 
-      $storageAccountExists = az storage account list `
+      az deployment group create `
         --resource-group "$(resourceGroupName)" `
-        --query "[?name=='$(storageAccountName)'].name" `
+        --template-file "$(armTemplateFile)" `
+        --parameters "@$(armParametersFile)" `
+        --mode Incremental
+
+      Write-Host "ARM deployment completed successfully."
+
+- task: AzureCLI@2
+  displayName: 'Grant Pipeline Access to Key Vault'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    addSpnToEnvironment: true
+    inlineScript: |
+      $ErrorActionPreference = "Stop"
+
+      $keyVaultId = az keyvault show `
+        --name "$(keyVaultName)" `
+        --query id `
         -o tsv
 
-      if ($storageAccountExists) {
-        Write-Host "Storage Account already exists: $(storageAccountName)"
+      if (:IsNullOrWhiteSpace($keyVaultId)) {
+        Write-Error "Key Vault Id was not found."
+        exit 1
+      }
+
+      Write-Host "Key Vault Id: $keyVaultId"
+      Write-Host "Service connection application id: $env:servicePrincipalId"
+
+      $existingAssignment = az role assignment list `
+        --assignee $env:servicePrincipalId `
+        --scope $keyVaultId `
+        --query "[?roleDefinitionName=='Key Vault Secrets Officer'].id" `
+        -o tsv
+
+      if (:IsNullOrWhiteSpace($existingAssignment)) {
+        Write-Host "Assigning Key Vault Secrets Officer role to service connection."
+
+        az role assignment create `
+          --assignee $env:servicePrincipalId `
+          --role "Key Vault Secrets Officer" `
+          --scope $keyVaultId
       }
       else {
-        Write-Host "Storage Account does not exist. Creating: $(storageAccountName)"
-
-        az storage account create `
-          --name "$(storageAccountName)" `
-          --resource-group "$(resourceGroupName)" `
-          --location "$(location)" `
-          --sku Standard_LRS `
-          --kind StorageV2
+        Write-Host "Key Vault Secrets Officer role already exists for service connection."
       }
 
+      Write-Host "Waiting for RBAC propagation."
+      Start-Sleep -Seconds 60
 
-      Write-Host "Checking Application Insights: $(appInsightsName)"
+- task: AzureCLI@2
+  displayName: 'Create or Update Log Ingestion Secrets in Key Vault'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      $ErrorActionPreference = "Stop"
 
-      $appInsightsExists = az resource list `
+      $keyVaultName = "$(keyVaultName)"
+      $tempDirectory = "$(Agent.TempDirectory)"
+
+      $clientIdFile = Join-Path $tempDirectory "log-ingestion-client-id.txt"
+      $clientSecretFile = Join-Path $tempDirectory "log-ingestion-client-secret.txt"
+      $tenantIdFile = Join-Path $tempDirectory "log-ingestion-tenant-id.txt"
+
+      $env:LOG_INGESTION_CLIENT_ID_VALUE | Out-File $clientIdFile -Encoding utf8 -NoNewline
+      $env:LOG_INGESTION_CLIENT_SECRET_VALUE | Out-File $clientSecretFile -Encoding utf8 -NoNewline
+      $env:LOG_INGESTION_TENANT_ID_VALUE | Out-File $tenantIdFile -Encoding utf8 -NoNewline
+
+      function Sync-KeyVaultSecretFromFile {
+        param (
+          [string] $VaultName,
+          [string] $SecretName,
+          [string] $DesiredValueFile
+        )
+
+        Write-Host "Processing secret: $SecretName"
+
+        $secretExists = az keyvault secret list `
+          --vault-name $VaultName `
+          --query "[?name=='$SecretName'].name" `
+          -o tsv `
+          --only-show-errors
+
+        if (:IsNullOrWhiteSpace($secretExists)) {
+          Write-Host "Secret does not exist. Creating: $SecretName"
+
+          az keyvault secret set `
+            --vault-name $VaultName `
+            --name $SecretName `
+            --file $DesiredValueFile `
+            --encoding utf-8 `
+            --only-show-errors
+
+          Write-Host "Secret created: $SecretName"
+          return
+        }
+
+        $currentValueFile = Join-Path "$(Agent.TempDirectory)" "$SecretName-current.txt"
+
+        az keyvault secret download `
+          --vault-name $VaultName `
+          --name $SecretName `
+          --file $currentValueFile `
+          --encoding utf-8 `
+          --only-show-errors
+
+        $currentHash = (Get-FileHash $currentValueFile -Algorithm SHA256).Hash
+        $desiredHash = (Get-FileHash $DesiredValueFile -Algorithm SHA256).Hash
+
+        if ($currentHash -eq $desiredHash) {
+          Write-Host "Secret value is same. No update required: $SecretName"
+          return
+        }
+
+        Write-Host "Secret value changed. Creating new version: $SecretName"
+
+        $oldSecretId = az keyvault secret show `
+          --vault-name $VaultName `
+          --name $SecretName `
+          --query id `
+          -o tsv `
+          --only-show-errors
+
+        az keyvault secret set `
+          --vault-name $VaultName `
+          --name $SecretName `
+          --file $DesiredValueFile `
+          --encoding utf-8 `
+          --only-show-errors
+
+        Write-Host "Disabling previous version: $SecretName"
+
+        az keyvault secret set-attributes `
+          --id $oldSecretId `
+          --enabled false `
+          --only-show-errors
+      }
+
+      Sync-KeyVaultSecretFromFile `
+        -VaultName $keyVaultName `
+        -SecretName "log-ingestion-client-id" `
+        -DesiredValueFile $clientIdFile
+
+      Sync-KeyVaultSecretFromFile `
+        -VaultName $keyVaultName `
+        -SecretName "log-ingestion-client-secret" `
+        -DesiredValueFile $clientSecretFile
+
+      Sync-KeyVaultSecretFromFile `
+        -VaultName $keyVaultName `
+        -SecretName "log-ingestion-tenant-id" `
+        -DesiredValueFile $tenantIdFile
+
+      Remove-Item $clientIdFile -Force -ErrorAction SilentlyContinue
+      Remove-Item $clientSecretFile -Force -ErrorAction SilentlyContinue
+      Remove-Item $tenantIdFile -Force -ErrorAction SilentlyContinue
+
+      Write-Host "Log ingestion secrets synchronized successfully."
+  env:
+    LOG_INGESTION_CLIENT_ID_VALUE: $(LOG_INGESTION_CLIENT_ID_VALUE)
+    LOG_INGESTION_CLIENT_SECRET_VALUE: $(LOG_INGESTION_CLIENT_SECRET_VALUE)
+    LOG_INGESTION_TENANT_ID_VALUE: $(LOG_INGESTION_TENANT_ID_VALUE)
+
+- task: AzureCLI@2
+  displayName: 'Assign Log Ingestion App Permissions'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      $ErrorActionPreference = "Stop"
+
+      $clientId = $env:LOG_INGESTION_CLIENT_ID_VALUE
+
+      if (:IsNullOrWhiteSpace($clientId)) {
+        Write-Error "LOG_INGESTION_CLIENT_ID_VALUE is empty."
+        exit 1
+      }
+
+      $dcrId = az monitor data-collection rule show `
+        --name "$(dcrName)" `
         --resource-group "$(resourceGroupName)" `
-        --resource-type "Microsoft.Insights/components" `
-        --query "[?name=='$(appInsightsName)'].name" `
+        --query id `
         -o tsv
 
-      if ($appInsightsExists) {
-        Write-Host "Application Insights already exists: $(appInsightsName)"
+      if (:IsNullOrWhiteSpace($dcrId)) {
+        Write-Error "DCR Id was not found."
+        exit 1
+      }
+
+      $workspaceId = az monitor log-analytics workspace show `
+        --workspace-name "$(logAnalyticsWorkspaceName)" `
+        --resource-group "$(resourceGroupName)" `
+        --query id `
+        -o tsv
+
+      if (:IsNullOrWhiteSpace($workspaceId)) {
+        Write-Error "Log Analytics Workspace Id was not found."
+        exit 1
+      }
+
+      Write-Host "DCR Id: $dcrId"
+      Write-Host "Workspace Id: $workspaceId"
+
+      $existingDcrAssignment = az role assignment list `
+        --assignee $clientId `
+        --scope $dcrId `
+        --query "[?roleDefinitionName=='Monitoring Metrics Publisher'].id" `
+        -o tsv
+
+      if (:IsNullOrWhiteSpace($existingDcrAssignment)) {
+        Write-Host "Assigning Monitoring Metrics Publisher role on DCR."
+
+        az role assignment create `
+          --assignee $clientId `
+          --role "Monitoring Metrics Publisher" `
+          --scope $dcrId
       }
       else {
-        Write-Host "Application Insights does not exist. Creating: $(appInsightsName)"
-
-        az resource create `
-          --resource-group "$(resourceGroupName)" `
-          --resource-type "Microsoft.Insights/components" `
-          --name "$(appInsightsName)" `
-          --location "$(location)" `
-          --properties '{\"Application_Type\":\"web\"}'
+        Write-Host "Monitoring Metrics Publisher role already assigned on DCR."
       }
 
-
-      Write-Host "Checking Function App: $(functionAppName)"
-
-      $functionAppExists = az functionapp list `
-        --resource-group "$(resourceGroupName)" `
-        --query "[?name=='$(functionAppName)'].name" `
+      $existingWorkspaceAssignment = az role assignment list `
+        --assignee $clientId `
+        --scope $workspaceId `
+        --query "[?roleDefinitionName=='Log Analytics Contributor'].id" `
         -o tsv
 
-      if ($functionAppExists) {
-        Write-Host "Function App already exists: $(functionAppName)"
+      if (:IsNullOrWhiteSpace($existingWorkspaceAssignment)) {
+        Write-Host "Assigning Log Analytics Contributor role on Log Analytics Workspace."
+
+        az role assignment create `
+          --assignee $clientId `
+          --role "Log Analytics Contributor" `
+          --scope $workspaceId
       }
       else {
-        Write-Host "Function App does not exist. Creating: $(functionAppName)"
-
-        az functionapp create `
-          --name "$(functionAppName)" `
-          --resource-group "$(resourceGroupName)" `
-          --storage-account "$(storageAccountName)" `
-          --consumption-plan-location "$(location)" `
-          --functions-version 4 `
-          --runtime dotnet-isolated `
-          --runtime-version 8 `
-          --os-type Windows
+        Write-Host "Log Analytics Contributor role already assigned on workspace."
       }
 
+      Write-Host "Waiting for RBAC propagation."
+      Start-Sleep -Seconds 60
+  env:
+    LOG_INGESTION_CLIENT_ID_VALUE: $(LOG_INGESTION_CLIENT_ID_VALUE)
 
-      Write-Host "Fetching Application Insights connection string"
+- task: AzureCLI@2
+  displayName: 'Grant Function App Access to Key Vault'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      $ErrorActionPreference = "Stop"
 
-      $appInsightsConnectionString = az resource show `
-        --resource-group "$(resourceGroupName)" `
-        --resource-type "Microsoft.Insights/components" `
-        --name "$(appInsightsName)" `
-        --query "properties.ConnectionString" `
-        -o tsv
-
-      if ([string]::IsNullOrWhiteSpace($appInsightsConnectionString)) {
-        Write-Host "Connection string not found. Fetching Instrumentation Key and building connection string."
-
-        $instrumentationKey = az resource show `
-          --resource-group "$(resourceGroupName)" `
-          --resource-type "Microsoft.Insights/components" `
-          --name "$(appInsightsName)" `
-          --query "properties.InstrumentationKey" `
-          -o tsv
-
-        $appInsightsConnectionString = "InstrumentationKey=$instrumentationKey"
-      }
-
-      Write-Host "Adding Application Insights connection string to Function App settings"
-
-      az functionapp config appsettings set `
+      $principalId = az functionapp identity show `
         --name "$(functionAppName)" `
         --resource-group "$(resourceGroupName)" `
-        --settings APPLICATIONINSIGHTS_CONNECTION_STRING="$appInsightsConnectionString"
+        --query principalId `
+        -o tsv
 
-      Write-Host "DEV infrastructure validation completed successfully."
+      if (:IsNullOrWhiteSpace($principalId)) {
+        Write-Error "Function App managed identity principal id was not found."
+        exit 1
+      }
+
+      $keyVaultId = az keyvault show `
+        --name "$(keyVaultName)" `
+        --query id `
+        -o tsv
+
+      if (:IsNullOrWhiteSpace($keyVaultId)) {
+        Write-Error "Key Vault Id was not found."
+        exit 1
+      }
+
+      $existingAssignment = az role assignment list `
+        --assignee $principalId `
+        --scope $keyVaultId `
+        --query "[?roleDefinitionName=='Key Vault Secrets User'].id" `
+        -o tsv
+
+      if (:IsNullOrWhiteSpace($existingAssignment)) {
+        Write-Host "Assigning Key Vault Secrets User role to Function App."
+
+        az role assignment create `
+          --assignee $principalId `
+          --role "Key Vault Secrets User" `
+          --scope $keyVaultId
+      }
+      else {
+        Write-Host "Key Vault Secrets User role already assigned to Function App."
+      }
+
+      Write-Host "Waiting for RBAC propagation."
+      Start-Sleep -Seconds 60
+
+- task: AzureCLI@2
+  displayName: 'Restart Function App'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: 'ps'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      $ErrorActionPreference = "Stop"
+
+      az functionapp restart `
+        --name "$(functionAppName)" `
+        --resource-group "$(resourceGroupName)"
+
+      Write-Host "Function App restarted successfully."
