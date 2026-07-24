@@ -1,0 +1,436 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceGroupName": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "storageAccountName": {
+      "type": "string"
+    },
+    "functionAppName": {
+      "type": "string"
+    },
+    "appInsightsName": {
+      "type": "string"
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string"
+    },
+    "hostingPlanName": {
+      "type": "string"
+    },
+    "keyVaultName": {
+      "type": "string"
+    },
+    "customTableName": {
+      "type": "string"
+    },
+    "dceName": {
+      "type": "string"
+    },
+    "dcrName": {
+      "type": "string"
+    },
+    "runtime": {
+      "type": "string",
+      "defaultValue": "dotnet-isolated"
+    }
+  },
+  "variables": {
+    "tableNameWithoutCl": "[replace(parameters('customTableName'), '_CL', '')]",
+    "customStreamName": "[concat('Custom-', parameters('customTableName'))]",
+    "storageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+    "hostingPlanId": "[resourceId('Microsoft.Web/serverfarms', parameters('hostingPlanName'))]",
+    "appInsightsId": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
+    "logAnalyticsWorkspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+    "keyVaultId": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+    "customTableResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces/tables', parameters('logAnalyticsWorkspaceName'), parameters('customTableName'))]",
+    "dceId": "[resourceId('Microsoft.Insights/dataCollectionEndpoints', parameters('dceName'))]",
+    "dcrId": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('dcrName'))]",
+    "dcrColumns": [
+      {
+        "name": "CorrelationId",
+        "type": "string"
+      },
+      {
+        "name": "RequestId",
+        "type": "string"
+      },
+      {
+        "name": "MessageId",
+        "type": "string"
+      },
+      {
+        "name": "sessionId",
+        "type": "string"
+      },
+      {
+        "name": "IntegrationName",
+        "type": "string"
+      },
+      {
+        "name": "LogType",
+        "type": "string"
+      },
+      {
+        "name": "LogMessage",
+        "type": "string"
+      },
+      {
+        "name": "LogDetail",
+        "type": "string"
+      },
+      {
+        "name": "Source",
+        "type": "string"
+      },
+      {
+        "name": "InputFileName",
+        "type": "string"
+      },
+      {
+        "name": "ReceivedDatetime",
+        "type": "datetime"
+      },
+      {
+        "name": "SentDatetime",
+        "type": "datetime"
+      },
+      {
+        "name": "IsEmailNotification",
+        "type": "boolean"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "[parameters('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[parameters('logAnalyticsWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30,
+        "publicNetworkAccessForIngestion": "Enabled",
+        "publicNetworkAccessForQuery": "Enabled",
+        "features": {
+          "enableLogAccessUsingOnlyResourcePermissions": true
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/tables",
+      "apiVersion": "2022-10-01",
+      "name": "[format('{0}/{1}', parameters('logAnalyticsWorkspaceName'), parameters('customTableName'))]",
+      "dependsOn": [
+        "[variables('logAnalyticsWorkspaceId')]"
+      ],
+      "properties": {
+        "plan": "Analytics",
+        "retentionInDays": 30,
+        "schema": {
+          "name": "[parameters('customTableName')]",
+          "columns": [
+            {
+              "name": "TimeGenerated",
+              "type": "datetime"
+            },
+            {
+              "name": "CorrelationId",
+              "type": "string"
+            },
+            {
+              "name": "RequestId",
+              "type": "string"
+            },
+            {
+              "name": "MessageId",
+              "type": "string"
+            },
+            {
+              "name": "sessionId",
+              "type": "string"
+            },
+            {
+              "name": "IntegrationName",
+              "type": "string"
+            },
+            {
+              "name": "LogType",
+              "type": "string"
+            },
+            {
+              "name": "LogMessage",
+              "type": "string"
+            },
+            {
+              "name": "LogDetail",
+              "type": "string"
+            },
+            {
+              "name": "Source",
+              "type": "string"
+            },
+            {
+              "name": "InputFileName",
+              "type": "string"
+            },
+            {
+              "name": "ReceivedDatetime",
+              "type": "datetime"
+            },
+            {
+              "name": "SentDatetime",
+              "type": "datetime"
+            },
+            {
+              "name": "IsEmailNotification",
+              "type": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "[parameters('appInsightsName')]",
+      "location": "[parameters('location')]",
+      "kind": "web",
+      "dependsOn": [
+        "[variables('logAnalyticsWorkspaceId')]"
+      ],
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[variables('logAnalyticsWorkspaceId')]",
+        "publicNetworkAccessForIngestion": "Enabled",
+        "publicNetworkAccessForQuery": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionEndpoints",
+      "apiVersion": "2022-06-01",
+      "name": "[parameters('dceName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "description": "[concat('Data Collection Endpoint for ', variables('tableNameWithoutCl'), ' ingestion')]",
+        "networkAcls": {
+          "publicNetworkAccess": "Enabled"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2022-06-01",
+      "name": "[parameters('dcrName')]",
+      "location": "[parameters('location')]",
+      "kind": "Direct",
+      "dependsOn": [
+        "[variables('dceId')]",
+        "[variables('logAnalyticsWorkspaceId')]",
+        "[variables('customTableResourceId')]"
+      ],
+      "properties": {
+        "description": "[concat('DCR for ', parameters('customTableName'), ' custom log ingestion')]",
+        "dataCollectionEndpointId": "[variables('dceId')]",
+        "streamDeclarations": "[createObject(variables('customStreamName'), createObject('columns', variables('dcrColumns')))]",
+        "destinations": {
+          "logAnalytics": [
+            {
+              "workspaceResourceId": "[variables('logAnalyticsWorkspaceId')]",
+              "name": "logAnalyticsDestination"
+            }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": [
+              "[variables('customStreamName')]"
+            ],
+            "destinations": [
+              "logAnalyticsDestination"
+            ],
+            "outputStream": "[variables('customStreamName')]",
+            "transformKql": "source | extend TimeGenerated = todatetime(ReceivedDatetime)"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('hostingPlanName')]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp",
+      "sku": {
+        "name": "Y1",
+        "tier": "Dynamic"
+      },
+      "properties": {
+        "reserved": false
+      }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[parameters('keyVaultName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "tenantId": "[subscription().tenantId]",
+        "sku": {
+          "family": "A",
+          "name": "standard"
+        },
+        "enableRbacAuthorization": true,
+        "enabledForDeployment": false,
+        "enabledForDiskEncryption": false,
+        "enabledForTemplateDeployment": true,
+        "enableSoftDelete": true,
+        "softDeleteRetentionInDays": 7,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('functionAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[variables('storageAccountId')]",
+        "[variables('hostingPlanId')]",
+        "[variables('appInsightsId')]",
+        "[variables('keyVaultId')]",
+        "[variables('dceId')]",
+        "[variables('dcrId')]"
+      ],
+      "properties": {
+        "serverFarmId": "[variables('hostingPlanId')]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "netFrameworkVersion": "v8.0",
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('storageAccountName'), ';EndpointSuffix=', environment().suffixes.storage, ';AccountKey=', listKeys(variables('storageAccountId'), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+              "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('storageAccountName'), ';EndpointSuffix=', environment().suffixes.storage, ';AccountKey=', listKeys(variables('storageAccountId'), '2023-01-01').keys[0].value)]"
+            },
+            {
+              "name": "WEBSITE_CONTENTSHARE",
+              "value": "[toLower(replace(parameters('functionAppName'), '-', ''))]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "[parameters('runtime')]"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[reference(variables('appInsightsId'), '2020-02-02').ConnectionString]"
+            },
+            {
+              "name": "WEBSITE_RUN_FROM_PACKAGE",
+              "value": "1"
+            },
+            {
+              "name": "[concat('AZURE_MONITOR_DCE_', variables('tableNameWithoutCl'))]",
+              "value": "[reference(variables('dceId'), '2022-06-01').logsIngestion.endpoint]"
+            },
+            {
+              "name": "[concat('AZURE_MONITOR_DCR_', variables('tableNameWithoutCl'))]",
+              "value": "[reference(variables('dcrId'), '2022-06-01').immutableId]"
+            },
+            {
+              "name": "[concat('AZURE_MONITOR_DCR_StreamName_', variables('tableNameWithoutCl'))]",
+              "value": "[variables('customStreamName')]"
+            },
+            {
+              "name": "[concat('AZURE_CLIENT_ID_', variables('tableNameWithoutCl'))]",
+              "value": "[concat('@Microsoft.KeyVault(VaultName=', parameters('keyVaultName'), ';SecretName=log-ingestion-client-id)')]"
+            },
+            {
+              "name": "[concat('AZURE_CLIENT_SECRET_', variables('tableNameWithoutCl'))]",
+              "value": "[concat('@Microsoft.KeyVault(VaultName=', parameters('keyVaultName'), ';SecretName=log-ingestion-client-secret)')]"
+            },
+            {
+              "name": "[concat('AZURE_TENANT_ID_', variables('tableNameWithoutCl'))]",
+              "value": "[concat('@Microsoft.KeyVault(VaultName=', parameters('keyVaultName'), ';SecretName=log-ingestion-tenant-id)')]"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "resourceGroupName": {
+      "type": "string",
+      "value": "[parameters('resourceGroupName')]"
+    },
+    "functionAppName": {
+      "type": "string",
+      "value": "[parameters('functionAppName')]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "value": "[parameters('storageAccountName')]"
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "value": "[parameters('logAnalyticsWorkspaceName')]"
+    },
+    "customTableName": {
+      "type": "string",
+      "value": "[parameters('customTableName')]"
+    },
+    "tableNameWithoutCl": {
+      "type": "string",
+      "value": "[variables('tableNameWithoutCl')]"
+    },
+    "customStreamName": {
+      "type": "string",
+      "value": "[variables('customStreamName')]"
+    },
+    "dataCollectionEndpointName": {
+      "type": "string",
+      "value": "[parameters('dceName')]"
+    },
+    "dataCollectionRuleName": {
+      "type": "string",
+      "value": "[parameters('dcrName')]"
+    },
+    "keyVaultName": {
+      "type": "string",
+      "value": "[parameters('keyVaultName')]"
+    }
+  }
+}
