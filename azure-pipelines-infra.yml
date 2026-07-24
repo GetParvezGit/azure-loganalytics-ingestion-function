@@ -287,26 +287,19 @@ steps:
       $ErrorActionPreference = "Stop"
 
       $clientId = $env:LOG_INGESTION_CLIENT_ID_VALUE
+      $servicePrincipalObjectId = $env:LOG_INGESTION_SP_OBJECT_ID_VALUE
 
       if ([string]::IsNullOrWhiteSpace($clientId)) {
         Write-Error "LOG_INGESTION_CLIENT_ID_VALUE is empty."
         exit 1
       }
 
-      Write-Host "Application Client Id: $clientId"
-
-      Write-Host "Fetching Service Principal Object Id using Client Id."
-
-      $servicePrincipalObjectId = az ad sp show `
-        --id $clientId `
-        --query id `
-        -o tsv
-
       if ([string]::IsNullOrWhiteSpace($servicePrincipalObjectId)) {
-        Write-Error "Service Principal Object Id was not found for client id: $clientId"
+        Write-Error "LOG_INGESTION_SP_OBJECT_ID_VALUE is empty. Use Enterprise Application Object ID, not Application Client ID."
         exit 1
       }
 
+      Write-Host "Application Client Id: $clientId"
       Write-Host "Service Principal Object Id: $servicePrincipalObjectId"
 
       Write-Host "Fetching DCR Id."
@@ -359,7 +352,7 @@ steps:
         Write-Host "Monitoring Metrics Publisher role already assigned on DCR."
       }
 
-      Write-Host "Checking Log Analytics Contributor role on workspace."
+      Write-Host "Checking Log Analytics Contributor role on Log Analytics Workspace."
 
       $existingWorkspaceAssignment = az role assignment list `
         --assignee $servicePrincipalObjectId `
@@ -377,13 +370,14 @@ steps:
           --scope $workspaceId
       }
       else {
-        Write-Host "Log Analytics Contributor role already assigned on workspace."
+        Write-Host "Log Analytics Contributor role already assigned on Log Analytics Workspace."
       }
 
       Write-Host "Waiting for RBAC propagation."
       Start-Sleep -Seconds 60
   env:
     LOG_INGESTION_CLIENT_ID_VALUE: $(LOG_INGESTION_CLIENT_ID_VALUE)
+    LOG_INGESTION_SP_OBJECT_ID_VALUE: $(LOG_INGESTION_SP_OBJECT_ID_VALUE)
 
 - task: AzureCLI@2
   displayName: 'Grant Function App Access to Key Vault'
